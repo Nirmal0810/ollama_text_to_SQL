@@ -1,0 +1,14 @@
+{
+  "tables": [
+    {
+      "name": "transaction_intent",
+      "description": "Stores details about user transaction intents.",
+      "columns": [
+        {"name": "intent_id", "type": "INTEGER", "description": "Primary key for each intent"},
+        {"name": "customer_id", "type": "INTEGER", "description": "Customer associated with the intent"},
+        {"name": "amount", "type": "DECIMAL", "description": "Transaction amount"},
+        {"name": "intent_date", "type": "DATE", "description": "Date of transaction intent"}
+      ]
+    }
+  ]
+}
