@@ -1,6 +1,7 @@
 import json
 import ollama
 import subprocess
+import sqlite3
 
 # --- Step 1: Ensure model availability ---
 def ensure_model(model_name):
@@ -37,7 +38,8 @@ def load_schema(metadata_path="db_metadata.json"):
 def generate_sql(question, schema, model_name="llama3.2:1b"):
     """Generate SQL query using Ollama model."""
     prompt = f"""
-You are an expert SQL query generator.
+You are an expert SQL query generator. Using sqlite3 syntax, write a SQL query to answer the following question.
+There should not be any syntax errors in the SQL query following the sqlite3 syntax format.
 Based only on the provided database schema, write **only the SQL query** (no explanations, no markdown).
 Ensure all table and column names strictly match the schema.
 
@@ -52,6 +54,44 @@ Output:
     response = ollama.generate(model=model_name, prompt=prompt)
     return response["response"].strip()
 
+
+def execute_sql_query(db_path, sql):
+    """Execute SQL query and return results."""
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(sql)
+
+        # Fetch results if it's a SELECT query
+        if sql.strip().lower().startswith("select"):
+            rows = cur.fetchall()
+            col_names = [desc[0] for desc in cur.description]
+            print("\n--- Query Results ---")
+            print(" | ".join(col_names))
+            print("-" * 40)
+            for row in rows:
+                print(" | ".join(str(x) for x in row))
+        else:
+            conn.commit()
+            print(f"\nQuery executed successfully. Rows affected: {cur.rowcount}")
+    except Exception as e:
+        print(f"\n❌ Error executing SQL: {e}")
+    finally:
+        conn.close()
+
+
+def validate_sql_syntax(database_path, sql):
+    """Check if SQL syntax is valid in SQLite."""
+    try:
+        conn = sqlite3.connect(database_path)
+        cur = conn.cursor()
+        # SQLite’s 'EXPLAIN' helps test syntax without executing the query
+        cur.execute("EXPLAIN " + sql)
+        conn.close()
+        return True, None
+    except sqlite3.Error as e:
+        return False, str(e)
+    
 # --- Step 4: Chat mode ---
 def start_chat(model_name="llama3.2:1b", metadata_path="sample_metadata.json"):
     """Start interactive SQL chat session."""
@@ -72,6 +112,20 @@ def start_chat(model_name="llama3.2:1b", metadata_path="sample_metadata.json"):
         print("\nGenerating SQL...\n")
         sql = generate_sql(user_input, schema, model_name)
         print(f"SQL Query:\n{sql}\n")
+
+        # ✅ Validate SQL syntax
+        valid, error = validate_sql_syntax("banking_fb.db", sql)
+        if not valid:
+            print(f"⚠️ SQL syntax error detected:\n{error}\n")
+            continue
+
+        confirm = input("⚠️  Do you want to execute this query on the database? (yes/no): ").strip().lower()
+        if confirm not in ["yes", "y"]:
+            print("❌ Query execution skipped.\n")
+            continue
+
+        print("✅ Executing query...\n")
+        execute_sql_query("banking_fb.db", sql)
 
 # --- Step 5: Run main ---
 if __name__ == "__main__":
